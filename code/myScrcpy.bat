@@ -8,12 +8,14 @@ set adb_path=scrcpy\adb.exe
 REM 配置文件路径
 set config_file=scrcpy-config.ini
 REM 定义当前版本字符串
-set current_version=0.3.5
+set current_version=0.3.9
 set version_url=https://raw.githubusercontent.com/yanxiaoyu1314/Scrcpy-UI-bat/refs/heads/main/info.json
 
 
 REM ==================================================
 REM 版本历史
+REM v0.3.9 - 增加自定义命令执行
+REM v0.3.6 - 修复了一些bug
 REM v0.3.5 - 关闭后自动关闭ADB链接
 REM v0.3.0 - 完成无线链接方式
 REM v0.2.0 - 重构整个菜单以及逻辑
@@ -21,10 +23,7 @@ REM v0.1.0 - 初始版本，基本功能实现
 REM ==================================================
 
 echo ↓↓↓当前版本（%current_version%）更新内容↓↓↓
-echo 关闭后自动关闭ADB链接
-echo 重构整个菜单以及逻辑
-echo 完成无线链接方式
-echo 初始版本，基本功能实现
+echo 增加自定义命令执行
 echo ↑↑↑当前版本更新内容↑↑↑
 
 
@@ -137,10 +136,11 @@ echo 2. 使用默认参数连接
 echo 3. 自定义参数连接
 echo 4. 无线连接设置
 echo 5. 默认参数设置
-echo 6. 请作者喝杯奶茶
-echo 7. 清理ADB进程并退出
+echo 6. 自定义命令
+echo 7. 请作者喝杯奶茶
+echo 8. 清理ADB进程并退出
 echo ==========================================================================
-set /p choice=请输入选项 (1-7)：
+set /p choice=请输入选项 (1-8)：
 
 REM 根据用户选择执行相应操作
 if "%choice%"=="1" goto basic_connect
@@ -148,8 +148,9 @@ if "%choice%"=="2" goto default_connect
 if "%choice%"=="3" goto custom_params
 if "%choice%"=="4" goto wireless_connect
 if "%choice%"=="5" goto default_settings
-if "%choice%"=="6" goto DrinkMilkTea
-if "%choice%"=="7" goto exit_script
+if "%choice%"=="6" goto custom_commands
+if "%choice%"=="7" goto DrinkMilkTea
+if "%choice%"=="8" goto exit_script
 
 echo 无效选项。请重试。
 pause
@@ -1293,6 +1294,118 @@ REM 返回: 无
         start "scrcpy" "%scrcpy_path%" %params%
     )
     exit /b 0
+
+REM ==================================================
+REM 自定义命令功能
+REM ==================================================
+:custom_commands
+cls
+ echo ==========================================================================
+ echo                          自定义命令功能                          
+ echo ==========================================================================
+ echo 1. 执行自定义ADB命令
+ echo 2. 执行自定义Scrcpy命令
+ echo 3. 返回主菜单
+ echo ==========================================================================
+ set /p custom_choice=请输入选项 (1-3)：
+ 
+ if "%custom_choice%"=="1" goto custom_adb_command
+ if "%custom_choice%"=="2" goto custom_scrcpy_command
+ if "%custom_choice%"=="3" goto main_menu
+ 
+ echo 无效选项。请重试。
+pause
+REM 清空变量以避免下一次使用上次的值
+set custom_choice=
+goto custom_commands
+ 
+:custom_adb_command
+cls
+ echo ==========================================================================
+ echo                        自定义ADB命令执行                        
+ echo ==========================================================================
+ echo 提示：
+ echo 1. 此处直接执行ADB命令，不需要包含adb命令本身
+ echo 2. 常用命令示例：
+ echo    - devices           - 查看已连接设备
+ echo    - shell pm list packages - 列出所有已安装应用
+ echo    - shell am start -a android.intent.action.VIEW -d "https://www.example.com" - 打开网址
+ echo    - shell screencap -p /sdcard/screenshot.png - 截取屏幕
+ echo    - pull /sdcard/screenshot.png . - 从设备拉取文件
+ echo    - push localfile.txt /sdcard/ - 推送文件到设备
+ echo ==========================================================================
+ set /p adb_cmd=请输入ADB命令 (或按回车返回)：
+ 
+ if "%adb_cmd%"=="" goto custom_commands
+ 
+ echo. 正在执行命令：adb %adb_cmd%
+ echo. --------------------------------------------------------------------------
+ "%adb_path%" %adb_cmd%
+ echo. --------------------------------------------------------------------------
+ echo 命令执行完成！
+pause
+REM 清空变量以避免下一次使用上次的值
+set adb_cmd=
+goto custom_adb_command
+ 
+:custom_scrcpy_command
+cls
+ echo ==========================================================================
+ echo                       自定义Scrcpy命令执行                       
+ echo ==========================================================================
+ echo 提示：
+ echo 1. 此处直接执行Scrcpy命令，不需要包含scrcpy命令本身
+ echo 2. 常用命令示例：
+ echo    - --new-display=1920x1080 - 虚拟窗口显示分辨率（可不填写分辨率）
+ echo    - --no-audio - 禁用音频
+ echo    - --turn-screen-off - 关闭设备屏幕
+ echo    - --stay-awake - 保持设备唤醒
+ echo    - -s 设备序列号 - 指定设备
+ echo ==========================================================================
+ set /p scrcpy_cmd=请输入Scrcpy命令参数 (或按回车返回)：
+ 
+ if "%scrcpy_cmd%"=="" goto custom_commands
+ 
+ REM 检查命令中是否已经包含设备指定参数
+ echo %scrcpy_cmd% | findstr /i /c:"-s " >nul
+ if errorlevel 1 (
+    REM 命令中没有指定设备，检查设备数量
+    "%adb_path%" devices > devices.txt
+    type devices.txt | findstr /v "List" | findstr /v "offline" >nul
+    if not errorlevel 1 (
+        REM 统计设备数量
+        set device_count=0
+        for /f "tokens=1" %%a in ('type devices.txt ^| findstr /v "List" ^| findstr /v "offline" ^| findstr /r ".*"') do (
+            set /a device_count+=1
+        )
+        
+        REM 如果有多个设备且未指定设备，调用设备选择函数
+        if %device_count% gtr 1 (
+            echo 检测到多个设备，需要选择要连接的设备
+            call :select_device_function
+            if not errorlevel 1 (
+                echo 将使用设备：!selected_device!
+                set scrcpy_cmd=-s !selected_device! %scrcpy_cmd%
+            ) else (
+                echo 设备选择失败，返回自定义命令菜单
+                pause
+                REM 清空变量以避免下一次使用上次的值
+                set scrcpy_cmd=
+                goto custom_scrcpy_command
+            )
+        )
+    )
+ )
+ 
+ echo. 正在执行命令：scrcpy %scrcpy_cmd%
+ echo. --------------------------------------------------------------------------
+ start "scrcpy" "%scrcpy_path%" %scrcpy_cmd%
+ echo. --------------------------------------------------------------------------
+ echo Scrcpy已启动！
+pause
+REM 清空变量以避免下一次使用上次的值
+set scrcpy_cmd=
+goto custom_scrcpy_command
 
 REM ==================================================
 REM 退出脚本
